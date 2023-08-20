@@ -5,7 +5,7 @@ package iouringfile
 import (
 	"fmt"
 	"os"
-	"runtime"
+	//"runtime"
 
 	"github.com/iceber/iouring-go"
 )
@@ -28,13 +28,22 @@ type event struct {
 
 	rwEvent rwEvent
 
-	result chan iouring.Result
+	resultCh chan iouring.Result
 }
 
 type rwEvent struct {
 	fd     uintptr
 	offset int64
 	b      []byte
+}
+
+const resultPoolSize = 100
+var resultPool = make(chan chan iouring.Result, resultPoolSize)
+
+func init() {
+	for i := 0; i < resultPoolSize; i++ {
+		resultPool <- make(chan iouring.Result, 1)
+	}
 }
 
 func submitRWEvent(eventType eventType, f *os.File, b []byte, offset int64) event {
@@ -45,7 +54,7 @@ func submitRWEvent(eventType eventType, f *os.File, b []byte, offset int64) even
 			offset: offset,
 			b:      b,
 		},
-		result: make(chan iouring.Result, 1),
+		resultCh: <-resultPool,
 	}
 	eventCh <- e
 	return e
@@ -58,10 +67,14 @@ func init() {
 }
 
 func eventLoop() {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	// This causes the reads to take double the time.
+	//runtime.LockOSThread()
+	//defer runtime.UnlockOSThread()
 
-	iour, err := iouring.New(100, iouring.WithSQPoll())
+	// With iouring.WithSQPoll makes this lock up forever.
+	// Also, 100 vs 1 makes no difference for this test, which makes sense without concurrency.
+	//iour, err := iouring.New(100, iouring.WithSQPoll())
+	iour, err := iouring.New(100)
 	if err != nil {
 		panic(fmt.Sprintf("new IOURing error: %v", err))
 	}
@@ -72,25 +85,25 @@ func eventLoop() {
 		switch e.eventType {
 		case etRead:
 			if e.rwEvent.offset == -1 {
-				req := iouring.Read(e.rwEvent.fd, e.rwEvent.b)
-				if _, err := iouring.SubmitRequest(req, e.result); err != nil {
+				req := iouring.Read(int(e.rwEvent.fd), e.rwEvent.b)
+				if _, err := iour.SubmitRequest(req, e.resultCh); err != nil {
 					panic(err)
 				}
 			} else {
-				req := iouring.Pread(e.rwEvent.fd, e.rwEvent.b, e.rwEvent.offset)
-				if _, err := iouring.SubmitRequest(req, e.result); err != nil {
+				req := iouring.Pread(int(e.rwEvent.fd), e.rwEvent.b, uint64(e.rwEvent.offset))
+				if _, err := iour.SubmitRequest(req, e.resultCh); err != nil {
 					panic(err)
 				}
 			}
 		case etWrite:
 			if e.rwEvent.offset == -1 {
-				req := iouring.Write(e.rwEvent.fd, e.rwEvent.b)
-				if _, err := iouring.SubmitRequest(req, e.result); err != nil {
+				req := iouring.Write(int(e.rwEvent.fd), e.rwEvent.b)
+				if _, err := iour.SubmitRequest(req, e.resultCh); err != nil {
 					panic(err)
 				}
 			} else {
-				req := iouring.Pwrite(e.rwEvent.fd, e.rwEvent.b, e.rwEvent.offset)
-				if _, err := iouring.SubmitRequest(req, e.result); err != nil {
+				req := iouring.Pwrite(int(e.rwEvent.fd), e.rwEvent.b, uint64(e.rwEvent.offset))
+				if _, err := iour.SubmitRequest(req, e.resultCh); err != nil {
 					panic(err)
 				}
 			}

@@ -1,4 +1,4 @@
-//go:build linux
+// +build linux
 
 package iouringfile
 
@@ -13,8 +13,9 @@ Read reads up to len(b) bytes from the File and stores them in b. It returns the
 */
 func (f *File) Read(b []byte) (n int, err error) {
 	e := submitRWEvent(etRead, f.f, b, -1)
-	i, err := <-e.result.ReturnInt()
-	return i, err
+	r := <-e.resultCh
+	resultPool <-e.resultCh
+	return r.ReturnInt()
 }
 
 /*
@@ -22,14 +23,16 @@ ReadAt reads len(b) bytes from the File starting at byte offset off. It returns 
 */
 func (f *File) ReadAt(b []byte, off int64) (n int, err error) {
 	e := submitRWEvent(etRead, f.f, b, off)
-	i, err := <-e.result.ReturnInt()
-	return i, err
+	r := <-e.resultCh
+	resultPool <-e.resultCh
+	return r.ReturnInt()
 }
 
 func (f *File) Write(b []byte) (n int, err error) {
 	e := submitRWEvent(etWrite, f.f, b, -1)
-	i, err := <-e.result.ReturnInt()
-	return i, err
+	r := <-e.resultCh
+	resultPool <-e.resultCh
+	return r.ReturnInt()
 }
 
 // WriteAt writes len(b) bytes to the File starting at byte offset off.
@@ -39,8 +42,9 @@ func (f *File) Write(b []byte) (n int, err error) {
 // If file was opened with the O_APPEND flag, WriteAt returns an error.
 func (f *File) WriteAt(b []byte, off int64) (n int, err error) {
 	e := submitRWEvent(etWrite, f.f, b, off)
-	i, err := <-e.result.ReturnInt()
-	return i, err
+	r := <-e.resultCh
+	resultPool <-e.resultCh
+	return r.ReturnInt()
 }
 
 // WriteString is like Write, but writes the contents of string s rather than
@@ -49,8 +53,9 @@ func (f *File) WriteString(s string) (n int, err error) {
 	b := unsafe.Slice(unsafe.StringData(s), len(s))
 
 	e := submitRWEvent(etWrite, f.f, b, -1)
-	i, err := <-e.result.ReturnInt()
-	return i, err
+	r := <-e.resultCh
+	resultPool <-e.resultCh
+	return r.ReturnInt()
 }
 
 // ReadFile reads the file named by filename and returns the contents.
@@ -71,7 +76,10 @@ func ReadFile(name string) ([]byte, error) {
 	}
 
 	e := submitRWEvent(etRead, f, b, -1)
-	_, err := <-e.result.ReturnInt()
+	r := <-e.resultCh
+	resultPool <-e.resultCh
+
+	_, err = r.ReturnInt()
 	return b, err
 }
 
@@ -82,6 +90,8 @@ func WriteFile(name string, data []byte, perm fs.FileMode) error {
 	}
 
 	e := submitRWEvent(etWrite, f, data, -1)
-	_, err := <-e.result.ReturnInt()
+	r := <-e.resultCh
+	resultPool <-e.resultCh
+	_, err = r.ReturnInt()
 	return err
 }

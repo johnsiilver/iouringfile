@@ -21,6 +21,7 @@ func BenchmarkReadFile(b *testing.B) {
 		fileSize int
 		subTest  string
 	}{
+		/*
 		{
 			name:     "OS 1KiB",
 			fileSize: 1024,
@@ -71,6 +72,7 @@ func BenchmarkReadFile(b *testing.B) {
 			fileSize: 1024 * 1024 * 1024,
 			subTest:  "OSReadFile",
 		},
+		*/
 		{
 			name:     "IOURING 1KiB	",
 			fileSize: 1024,
